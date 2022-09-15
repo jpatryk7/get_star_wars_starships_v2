@@ -3,7 +3,9 @@ import random
 import pymongo
 import settings
 import pandas as pd
+import time
 from bson.objectid import ObjectId
+from typing import Callable
 
 
 class GetShips:
@@ -14,15 +16,37 @@ class GetShips:
                  starship_collection_name: str = settings.starship_collection_name,
                  people_collection_name: str = settings.people_collection_name,
                  database_name: str = settings.database_name) -> None:
+
+        self.start_time = 0
+        self.previous_msg = ""
+
+        # Setting up MongoDB connection
+        self.__timer("start", "Setting up MongoDB connection...")
         self.db = pymongo.MongoClient(connection_url)[database_name]
         self.people_collection = self.db[people_collection_name]
         self.starship_collection = self.db[starship_collection_name]
+        self.__timer("end")
 
         self.starships_url_base = starships_url_base
         self.people_url_base = people_url_base
 
+        # Extracting starships data from API
+        self.__timer("start", f"Extracting data from {starships_url_base}...")
         self.all_ships = self._get_all_ships()
+        self.__timer("end")
+
+        # Extracting and filtering people data from API
+        self.__timer("start", f"Extracting and filtering data from {people_url_base}...")
         self.all_pilots = self._get_all_pilots_info()
+        self.__timer("end")
+
+    def __timer(self, position: str, msg: str = ""):
+        if position == "start":
+            self.start_time = time.time()
+            self.previous_msg = msg
+            print('\r' + msg, end='')
+        elif position:
+            print('\r' + self.previous_msg + f" DONE ({'{:.2f}'.format(time.time() - self.start_time)})")
 
     def _get_all_ships(self) -> list[dict]:
         """
@@ -94,9 +118,7 @@ class GetShips:
             try:
                 people_json = requests.get(page_url).json()
             except requests.exceptions.JSONDecodeError:
-                print(f"url = {page_url}"
-                      f"req = {requests.get(page_url)}")
-                raise requests.exceptions.JSONDecodeError
+                raise Exception(f"Request response {requests.get(page_url)} for {page_url}")
 
             for person in people_json["results"]:
                 not_allowed = [
@@ -197,12 +219,16 @@ class GetShips:
 
         :return:
         """
+        self.__timer("start", "Swapping URLs with IDs...")
         for i in range(len(self.all_ships)):
             self._swap_url_with_id(ship_index=i)
+        self.__timer("end")
 
         # clear collection before saving anything
+        self.__timer("start", f"Saving data to collection {settings.starship_collection_name}...")
         self.starship_collection.delete_many({})
         self.starship_collection.insert_many(self.all_ships)
+        self.__timer("end")
 
 
 if __name__ == "__main__":
