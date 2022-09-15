@@ -1,20 +1,46 @@
-class GetShips:
-    def __init__(self, url: str = "mongodb://localhost:27017/") -> None:
-        pass
+import requests
+import random
+import pymongo
+import settings
+import re
+import itertools
+from bson.objectid import ObjectId
 
-    def _get_all_ships(self, url_base: str = "https://swapi.dev/api/starships/") -> list[dict]:
+
+class GetShips:
+    def __init__(self, *,
+                 connection_url: str = settings.connection_url,
+                 starships_url_base: str = settings.starships_url_base,
+                 people_url_base: str = settings.people_url_base,
+                 starship_collection_name: str = settings.starship_collection_name,
+                 people_collection_name: str = settings.people_collection_name,
+                 database_name: str = settings.database_name) -> None:
+        self.db = pymongo.MongoClient(connection_url)[database_name]
+        self.people_collection = self.db[people_collection_name]
+        self.starship_collection = self.db[starship_collection_name]
+
+        self.starships_url_base = starships_url_base
+        self.people_url_base = people_url_base
+
+        self.all_ships = self._get_all_ships()
+        self.all_pilots = self._get_all_pilots_info()
+
+    def _get_all_ships(self) -> list[dict]:
         """
-        Iterate through all pages (if using the default url_base: "https://swapi.dev/api/people/?page=page_index") to
+        Iterate through all pages (if using the default swapi.dev: "https://swapi.dev/api/people/?page=page_index") to
         get parts of the ships' collection as a list. Merge lists at the end return.
 
-        Function can take following forms:
-            _get_all_ships()
-            _get_all_ships("https://some.custom/url/to/api/entries/")
-
-        :param url_base: url to starship list. Default: https://swapi.dev/api/starships/
         :return: list of all starships
         """
-        return [{}]
+        all_ships, page_index = [], 1
+        while True:
+            starships_json = requests.get(f"{self.starships_url_base}?page={page_index}").json()
+            all_ships.extend([starship for starship in starships_json["results"]])
+            if starships_json["next"]:
+                page_index += 1
+            else:
+                break
+        return all_ships
 
     def _get_random_entry(self, doc: dict, not_allowed: list = None) -> str:
         """
@@ -38,14 +64,22 @@ class GetShips:
         :param not_allowed: list of entries that should be excluded from the random choice
         :return: randomly chosen key name from the doc
         """
-        return ""
+        try:
+            # prevent type error when not_allowed is none i.e. when it's not iterable
+            if not not_allowed:
+                not_allowed = []
 
-    def _get_all_pilots_info(self, url_base: str = "https://swapi.dev/api/people/") -> dict[dict]:
+            key_list = [k for k in [*doc] if k not in not_allowed]
+            return random.choice(key_list)
+        except TypeError:
+            print(f"[*doc] = {[*doc]} {type([*doc])},\ndoc = {doc},\nnot_allowed = {not_allowed}")
+
+    def _get_all_pilots_info(self) -> dict[dict]:
         """
-        Iterate through all pages (if using the default url_base: "https://swapi.dev/api/people/?page=page_index") and
+        Iterate through all pages (if using the default url: "https://swapi.dev/api/people/?page=page_index") and
         save url as the key to each entry where entry is the name of the character and arbitrarily chosen key-value
         pair - the latter serves as an extra verification in case if there are two characters with the same name. Each
-        entry of the dictionary e.g.:
+        entry of the dictionary should look like this e.g.:
 
         "https://swapi.dev/api/people/1/": {
             "_id": "",
@@ -53,54 +87,85 @@ class GetShips:
             "hair_color": "blond"
         }
 
-        Function can take following forms:
-            _get_all_ships()
-            _get_all_ships("https://some.custom/url/to/api/entries/")
-
-        :param url_base: url to characters list. Default: https://swapi.dev/api/people/
         :return: dictionary with characters urls as the key for each entry and dictionary as the value.
         """
-        return dict(dict())
+        all_pilots, page_url = {}, f"{self.people_url_base}?page=1"
+        while page_url:
 
-    def _get_pilot_id(self, pilot_info_entry: dict, collection_name: str = "characters") -> None:
+            try:
+                people_json = requests.get(page_url).json()
+            except requests.exceptions.JSONDecodeError:
+                print(f"url = {page_url}"
+                      f"req = {requests.get(page_url)}")
+                raise requests.exceptions.JSONDecodeError
+
+            for person in people_json["results"]:
+                not_allowed = [
+                    "_id", "name", "homeworld", "films", "species",
+                    "vehicles", "starships", "created", "edited", "url"
+                ]
+                random_entry_key = self._get_random_entry(person, not_allowed)
+                all_pilots[person["url"]] = {
+                    "_id": "",
+                    "name": person["name"],
+                    random_entry_key: person[random_entry_key]
+                }
+
+            page_url = people_json["next"]
+
+        return all_pilots
+
+    def _get_pilot_id(self, pilot_info: dict) -> ObjectId:
         """
         Access the collection of characters and find an ID of a person with matching name and other key-value pair. Save
         its ID to the dictionary. ID of the character must be a string. E.g.: "ObjectId('6321a1f964d4eea3381c3be6')"
 
-        Function can take following forms:
-            _get_pilot_id(pilot_info_entry)
-            _get_pilot_id(pilot_info_entry, "some_collection_name")     # uses "some_collection_name" instead of
-                                                                          "characters" for accessing collection with
-                                                                          star wars characters
-
-        :param pilot_info_entry: single pilots name and an extra parameter. E.g.:
+        :param pilot_info: single pilots name and an extra parameter. E.g.:
                 {
                     "_id": "",
                     "name": "Anakin Skywalker",
                     "hair_color": "blond"
                 }
-        :return:
+        :return: pilot ID as a string
         """
-        return None
+        try:
+            random_key = [*pilot_info][2]  # keys are ordered since Python 3.7
+            if str(pilot_info[random_key]).isdigit():
+                pilot = self.people_collection.find_one({
+                    "name": pilot_info["name"],
+                    random_key: {
+                        "$in": [
+                            pilot_info[random_key],
+                            int(pilot_info[random_key]),
+                            float(pilot_info[random_key])
+                        ]
+                    }
+                })
+            else:
+                pilot = self.people_collection.find_one({
+                    "name": pilot_info["name"],
+                    random_key: pilot_info[random_key]
+                })
+            if pilot:
+                return ObjectId(pilot["_id"])
+        except TypeError:
+            print(f"pilot_info_entry = {pilot_info} {type(pilot_info)}")
+            try:
+                random_key = [*pilot_info][2]
+                print(f"for random_key = {random_key}: {pilot_info[random_key]}")
+            finally:
+                raise TypeError
 
-    def _swap_url_with_id(self, ship_index: int = 0, *, ships: dict = None)\
-            -> list:
+    def _swap_url_with_id(self, ship_index: int = 0) -> None:
         """
         Access ship with given index and if there is no pilots return empty list; if there is any use its URL as key for
         the all_pilots dictionary to get its ID. Then swap the URL with ID.
 
-        Function can take following forms:
-            _swap_url_with_id(9)                                # access ship with index number 9 in self.all_ships
-            _swap_url_with_id(ships=some_user_defined_ship)     # use 0th item from some_user_defined_ship as the
-                                                                  dictionary with data about a ship.
-                                                                  some_user_defined_ship must be a dictionary within
-                                                                  a list.
-
         :param ship_index: index of the ship in self.all_ships or ships if not None
-        :param ships: list of ship(s) to use instead of the default self.all_ships
         :return: list of the same dimensions as self.all_ships[ship_index]["pilots"] but with id's instead of urls.
         """
-        return []
+        for i, url in enumerate(self.all_ships[ship_index]["pilots"]):
+            self.all_ships[ship_index]["pilots"][i] = self._get_pilot_id(self.all_pilots[url])
 
     def lookup_starships_list(self, ship_index: int = -1, *, keys: list = None) -> None:
         """
@@ -117,15 +182,21 @@ class GetShips:
         :return:
         """
 
-    def save_starships_collection(self, collection: str = "starships") -> bool:
+    def save_starships_collection(self) -> None:
         """
-        Create a new collection with ships and save the self.all_ships list in it.
+        Transform self.all_ships with _get_pilot_id() and _swap_url_with_id(). Then, write the list to the
+        self.starship_collection.
 
-        Function can take following forms:
-            save_starships_collection()                         # collection name will be "starships"
-            save_starships_collection("some_collection_name")   # collection name will be "some_collection_name"
-
-        :param collection: name of the collection. Default: "starships"
-        :return: true if the operation was successful and false otherwise
+        :return:
         """
-        return True
+        for i in range(len(self.all_ships)):
+            self._swap_url_with_id(ship_index=i)
+
+        # clear collection before saving anything
+        self.starship_collection.delete_many({})
+        self.starship_collection.insert_many(self.all_ships)
+
+
+if __name__ == "__main__":
+    get_starships_obj = GetShips()
+    get_starships_obj.save_starships_collection()
