@@ -2,6 +2,9 @@ import requests
 import random
 import pymongo
 import settings
+import re
+import itertools
+from bson.objectid import ObjectId
 
 
 class GetShips:
@@ -61,8 +64,15 @@ class GetShips:
         :param not_allowed: list of entries that should be excluded from the random choice
         :return: randomly chosen key name from the doc
         """
-        key_list = [key for key in [*doc] if key not in not_allowed]
-        return random.choice(key_list)
+        try:
+            # prevent type error when not_allowed is none i.e. when it's not iterable
+            if not not_allowed:
+                not_allowed = []
+
+            key_list = [k for k in [*doc] if k not in not_allowed]
+            return random.choice(key_list)
+        except TypeError:
+            print(f"[*doc] = {[*doc]} {type([*doc])},\ndoc = {doc},\nnot_allowed = {not_allowed}")
 
     def _get_all_pilots_info(self) -> dict[dict]:
         """
@@ -79,9 +89,16 @@ class GetShips:
 
         :return: dictionary with characters urls as the key for each entry and dictionary as the value.
         """
-        all_pilots, page_index = {}, 1
-        while True:
-            people_json = requests.get(f"{self.people_url_base}?page={page_index}").json()
+        all_pilots, page_url = {}, f"{self.people_url_base}?page=1"
+        while page_url:
+
+            try:
+                people_json = requests.get(page_url).json()
+            except requests.exceptions.JSONDecodeError:
+                print(f"url = {page_url}"
+                      f"req = {requests.get(page_url)}")
+                raise requests.exceptions.JSONDecodeError
+
             for person in people_json["results"]:
                 not_allowed = [
                     "_id", "name", "homeworld", "films", "species",
@@ -93,24 +110,17 @@ class GetShips:
                     "name": person["name"],
                     random_entry_key: person[random_entry_key]
                 }
-            if people_json["next"]:
-                page_index += 1
-            else:
-                break
+
+            page_url = people_json["next"]
+
         return all_pilots
 
-    def _get_pilot_id(self, pilot_info_entry: dict) -> str:
+    def _get_pilot_id(self, pilot_info: dict) -> ObjectId:
         """
         Access the collection of characters and find an ID of a person with matching name and other key-value pair. Save
         its ID to the dictionary. ID of the character must be a string. E.g.: "ObjectId('6321a1f964d4eea3381c3be6')"
 
-        Function can take following forms:
-            _get_pilot_id(pilot_info_entry)
-            _get_pilot_id(pilot_info_entry, "some_collection_name")     # uses "some_collection_name" instead of
-                                                                          "characters" for accessing collection with
-                                                                          star wars characters
-
-        :param pilot_info_entry: single pilots name and an extra parameter. E.g.:
+        :param pilot_info: single pilots name and an extra parameter. E.g.:
                 {
                     "_id": "",
                     "name": "Anakin Skywalker",
@@ -118,26 +128,44 @@ class GetShips:
                 }
         :return: pilot ID as a string
         """
-        return ""
+        try:
+            random_key = [*pilot_info][2]  # keys are ordered since Python 3.7
+            if str(pilot_info[random_key]).isdigit():
+                pilot = self.people_collection.find_one({
+                    "name": pilot_info["name"],
+                    random_key: {
+                        "$in": [
+                            pilot_info[random_key],
+                            int(pilot_info[random_key]),
+                            float(pilot_info[random_key])
+                        ]
+                    }
+                })
+            else:
+                pilot = self.people_collection.find_one({
+                    "name": pilot_info["name"],
+                    random_key: pilot_info[random_key]
+                })
+            if pilot:
+                return ObjectId(pilot["_id"])
+        except TypeError:
+            print(f"pilot_info_entry = {pilot_info} {type(pilot_info)}")
+            try:
+                random_key = [*pilot_info][2]
+                print(f"for random_key = {random_key}: {pilot_info[random_key]}")
+            finally:
+                raise TypeError
 
-    def _swap_url_with_id(self, ship_index: int = 0, *, ships: list = None)\
-            -> list:
+    def _swap_url_with_id(self, ship_index: int = 0) -> None:
         """
         Access ship with given index and if there is no pilots return empty list; if there is any use its URL as key for
         the all_pilots dictionary to get its ID. Then swap the URL with ID.
 
-        Function can take following forms:
-            _swap_url_with_id(9)                                # access ship with index number 9 in self.all_ships
-            _swap_url_with_id(ships=some_user_defined_ship)     # use 0th item from some_user_defined_ship as the
-                                                                  dictionary with data about a ship.
-                                                                  some_user_defined_ship must be a dictionary within
-                                                                  a list.
-
         :param ship_index: index of the ship in self.all_ships or ships if not None
-        :param ships: list of ship(s) to use instead of the default self.all_ships
         :return: list of the same dimensions as self.all_ships[ship_index]["pilots"] but with id's instead of urls.
         """
-        return []
+        for i, url in enumerate(self.all_ships[ship_index]["pilots"]):
+            self.all_ships[ship_index]["pilots"][i] = self._get_pilot_id(self.all_pilots[url])
 
     def lookup_starships_list(self, ship_index: int = -1, *, keys: list = None) -> None:
         """
@@ -161,10 +189,14 @@ class GetShips:
 
         :return:
         """
-        for pilot_info in self.all_pilots:
-            id = self._get_pilot_id(pilot_info)
-        return None
+        for i in range(len(self.all_ships)):
+            self._swap_url_with_id(ship_index=i)
+
+        # clear collection before saving anything
+        self.starship_collection.delete_many({})
+        self.starship_collection.insert_many(self.all_ships)
 
 
 if __name__ == "__main__":
     get_starships_obj = GetShips()
+    get_starships_obj.save_starships_collection()
