@@ -41,6 +41,12 @@ class GetShips:
         self.__timer("end")
 
     def __timer(self, position: str, msg: str = ""):
+        """
+
+        :param position:
+        :param msg:
+        :return:
+        """
         if position == "start":
             self.start_time = time.time()
             self.previous_msg = msg
