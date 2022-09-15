@@ -2,8 +2,7 @@ import requests
 import random
 import pymongo
 import settings
-import re
-import itertools
+import pandas as pd
 from bson.objectid import ObjectId
 
 
@@ -181,6 +180,15 @@ class GetShips:
         :param keys: list of keys from all ships or self.all_ships[ship_index] to view
         :return:
         """
+        if ship_index == -1:
+            starships_df = pd.DataFrame(self.all_ships)
+        else:
+            starships_df = pd.DataFrame(self.all_ships[ship_index])
+
+        if keys:
+            print(starships_df[keys])
+        else:
+            print(starships_df)
 
     def save_starships_collection(self) -> None:
         """
