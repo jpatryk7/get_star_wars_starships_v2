@@ -46,7 +46,7 @@ class GetShips:
             self.previous_msg = msg
             print('\r' + msg, end='')
         elif position:
-            print('\r' + self.previous_msg + f" DONE ({'{:.2f}'.format(time.time() - self.start_time)})")
+            print('\r' + self.previous_msg + f" DONE ({'{:.2f}'.format(time.time() - self.start_time)}s)")
 
     def _get_all_ships(self) -> list[dict]:
         """
