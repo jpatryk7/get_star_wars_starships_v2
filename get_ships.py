@@ -42,9 +42,11 @@ class GetShips:
 
     def __timer(self, position: str, msg: str = ""):
         """
+        Times blocks of code using "start" to save the current time and later, "end" to find the difference between the
+        current time and the previously saved one. It also displays messages to the console.
 
-        :param position:
-        :param msg:
+        :param position: "start" / "end"
+        :param msg: message to be displayed along with the block of code running duration
         :return:
         """
         if position == "start":
