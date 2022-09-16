@@ -5,7 +5,6 @@ import settings
 import pandas as pd
 import time
 from bson.objectid import ObjectId
-from typing import Callable
 
 
 class GetShips:
