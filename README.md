@@ -14,6 +14,14 @@ to be saved as a collection locally.
 8. Install requirements `$ pip install -r requirements.txt`
 9. (Optional) Adjust settings.py (general) `$ <file-editor-name> settings.py`, (Windows) `$ notepad settings.py`, (Linux/macOS) `$ vi settings.py`
 10. Run get_ships.py `$ python -m get_ships`
+
+## Automatic Setup
+> Follow steps 1 through 5 from the above section.
+> 6. (Optional) Adjust settings.py (general) `$ <file-editor-name> settings.py`, (Windows) `$ notepad settings.py`, (Linux/macOS) `$ vi settings.py`
+> 7. Run `$ source ./setup/local.sh`
+>
+> **Currently, tested only on Windows 10.**
+
 ## Code Breakdown
 * MongoDB client is instantiated in `__init__()` function, where also `_get_all_ships()` and `_get_all_pilots_info()` ale used to extract data from on starships and people from the API.
 * `_get_all_ships()` extracts data on starships from the API and saves it as a list of dictionaries.
