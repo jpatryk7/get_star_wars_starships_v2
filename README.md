@@ -16,9 +16,7 @@ to be saved as a collection locally.
 10. Run get_ships.py `$ python -m get_ships`
 
 ## Automatic Setup
-> Follow steps 1 through 5 from the above section.
-> 6. (Optional) Adjust settings.py (general) `$ <file-editor-name> settings.py`, (Windows) `$ notepad settings.py`, (Linux/macOS) `$ vi settings.py`
-> 7. Run `$ source ./setup/local.sh`
+> Follow steps 1 through 5 from the above section. Then, adjust settings.py `$ <file-editor-name> settings.py` and run `$ source ./setup/local.sh`.
 >
 > **Currently, tested only on Windows 10.**
 
