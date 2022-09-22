@@ -1,7 +1,7 @@
 import unittest
 
 import settings
-from get_ships import *
+from get_ships_v2 import *
 
 
 class TestGetShips(unittest.TestCase):
