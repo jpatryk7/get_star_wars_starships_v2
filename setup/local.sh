@@ -9,4 +9,4 @@ fi
 
 source $ACTIVATE_PATH
 pip install -r requirements.txt
-python -m get_ships
+python -m get_ships_v2

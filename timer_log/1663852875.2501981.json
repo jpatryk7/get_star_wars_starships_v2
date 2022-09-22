@@ -1,0 +1,12 @@
+{
+    "get_requests_total": {
+        "description": "",
+        "duration": 6.248674154281616,
+        "last_recorded_time": 1663852875.2471979
+    },
+    "pymongo_total": {
+        "description": "",
+        "duration": 0.0482480525970459,
+        "last_recorded_time": 1663852875.2481973
+    }
+}
